@@ -1,0 +1,147 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Tableau de bord admin</title>
+<link rel="stylesheet" href="/css/style.css">
+</head>
+<body class="page">
+  <div class="topbar">
+    <div class="brand">Votre <span>Prêt</span> — Admin</div>
+    <a href="#" class="logout" id="logout-link" style="display:none;">Déconnexion</a>
+  </div>
+
+  <div class="wrap" id="wrap">
+    <div class="card" id="login-card">
+      <h1>Accès admin</h1>
+      <p class="lead">Entrez le mot de passe admin pour voir les inscriptions et les demandes de prêt.</p>
+      <form id="admin-login-form">
+        <label for="password">Mot de passe</label>
+        <input type="password" id="password" required>
+        <div id="msg" class="msg"></div>
+        <button type="submit" class="btn-primary">Accéder au tableau de bord</button>
+      </form>
+    </div>
+  </div>
+
+  <script>
+    const wrap = document.getElementById("wrap");
+    const logoutLink = document.getElementById("logout-link");
+
+    function escapeHtml(s) {
+      return String(s).replace(/[&<>"']/g, (c) => ({
+        "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;"
+      }[c]));
+    }
+
+    function renderDashboard(data) {
+      logoutLink.style.display = "inline-block";
+
+      const rows = [];
+      data.users.forEach((u) => {
+        if (u.loans.length === 0) {
+          rows.push(`
+            <tr>
+              <td>${escapeHtml(u.email)}</td>
+              <td>${escapeHtml(u.country)}</td>
+              <td>${escapeHtml(u.birthDate)}</td>
+              <td colspan="3" class="empty" style="padding:10px 12px;">Aucune demande envoyée</td>
+              <td>${new Date(u.createdAt).toLocaleDateString("fr-FR")}</td>
+            </tr>
+          `);
+        } else {
+          u.loans.forEach((l) => {
+            rows.push(`
+              <tr>
+                <td>${escapeHtml(u.email)}</td>
+                <td>${escapeHtml(u.country)}</td>
+                <td>${escapeHtml(u.birthDate)}</td>
+                <td>${escapeHtml(l.lastName)} ${escapeHtml(l.firstName)}</td>
+                <td><span class="pill">${l.amount.toLocaleString("fr-FR")} ${escapeHtml(u.currencySymbol)}</span></td>
+                <td>${l.durationMonths} mois</td>
+                <td>${new Date(u.createdAt).toLocaleDateString("fr-FR")}</td>
+              </tr>
+            `);
+          });
+        }
+      });
+
+      wrap.innerHTML = `
+        <div class="card wide">
+          <div class="toolbar">
+            <h1 style="margin:0;">Inscriptions et demandes</h1>
+            <a href="/api/admin/export.csv" class="btn-secondary">Exporter en CSV</a>
+          </div>
+
+          <div class="stats-row">
+            <div class="stat">
+              <div class="num">${data.totalUsers}</div>
+              <div class="label">Personnes inscrites</div>
+            </div>
+            <div class="stat">
+              <div class="num">${data.totalLoanRequests}</div>
+              <div class="label">Demandes de prêt envoyées</div>
+            </div>
+          </div>
+
+          <div class="table-scroll">
+            <table>
+              <thead>
+                <tr>
+                  <th>E-mail</th>
+                  <th>Pays</th>
+                  <th>Naissance</th>
+                  <th>Nom demandeur</th>
+                  <th>Montant</th>
+                  <th>Durée</th>
+                  <th>Inscrit le</th>
+                </tr>
+              </thead>
+              <tbody>
+                ${rows.join("") || `<tr><td colspan="7" class="empty">Aucune inscription pour le moment.</td></tr>`}
+              </tbody>
+            </table>
+          </div>
+        </div>
+      `;
+    }
+
+    async function loadDashboard() {
+      const res = await fetch("/api/admin/summary");
+      if (!res.ok) return false;
+      renderDashboard(await res.json());
+      return true;
+    }
+
+    document.getElementById("admin-login-form").addEventListener("submit", async (e) => {
+      e.preventDefault();
+      const msg = document.getElementById("msg");
+      msg.className = "msg";
+
+      const res = await fetch("/api/admin/login", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ password: document.getElementById("password").value })
+      });
+
+      if (!res.ok) {
+        msg.className = "msg error";
+        msg.textContent = "Mot de passe incorrect.";
+        return;
+      }
+
+      loadDashboard();
+    });
+
+    logoutLink.addEventListener("click", async (e) => {
+      e.preventDefault();
+      await fetch("/api/admin/logout", { method: "POST" });
+      window.location.reload();
+    });
+
+    // Si une session admin est déjà active (rechargement de page), affiche directement le tableau.
+    loadDashboard();
+  </script>
+</body>
+</html>
